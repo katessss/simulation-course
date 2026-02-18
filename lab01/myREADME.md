@@ -23,7 +23,8 @@
     C = 0.15 
 
 # Вычисление ускорения
-# КАРТИНКА
+<img width="779" height="423" alt="Снимок экрана 2026-02-18 161118" src="https://github.com/user-attachments/assets/04bf7bd0-30c8-481b-a45c-c7269e578bb5" />
+
     # Вычисляет производные: [dx/dt, dy/dt, dvx/dt, dvy/dt]
     def get_derivatives(state, m, S):
         x, y, vx, vy = state
@@ -37,7 +38,8 @@
 
 
 # Один шаг полёта
-# КАРТИНКА
+<img width="779" height="423" alt="image" src="https://github.com/user-attachments/assets/90f7468c-11f7-46f0-a29b-dcc084e88cbf" />
+
     def step_RungeKutta_4(state, dt, m, S):
         k1 = get_derivatives(state, m, S)
         k2 = get_derivatives(state + k1 * dt / 2, m, S)
@@ -74,8 +76,9 @@
         return traj_x, traj_y, state[0], max_h, final_v
 
 Скриншот с несколькими траекториями:
+<img width="853" height="785" alt="Снимок экрана 2026-02-18 165102" src="https://github.com/user-attachments/assets/29ae9ccb-45b0-47db-b165-27c85cfe7e1e" />
 
-# КАРТИНКА
+
 ---
 
 Заполненная таблица:
