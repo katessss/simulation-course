@@ -6,7 +6,18 @@
 Заполнить таблицу значений температуры в центральной точке пластины после 2 секунд модельного времени.
 
 
-\rho c \frac{\partial T}{\partial t} = \lambda \frac{\partial^2 T}{\partial x^2}
+ρc 
+∂t
+∂T
+​
+ =λ 
+∂x 
+2
+ 
+∂ 
+2
+ T
+​
 
 \rho c \frac{T_i^{n+1} - T_i^n}{\Delta t} = \lambda \frac{T_{i-1}^{n+1} - 2T_i^{n+1} + T_{i+1}^{n+1}}{h^2}
 
