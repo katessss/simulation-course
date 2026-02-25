@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 from numba import jit
-import time
 
 @jit(nopython=True)
 def calculate_heat(Tl, Tr, L, h, total_time, dt, rho, c, lmd):
@@ -35,6 +34,7 @@ def calculate_heat(Tl, Tr, L, h, total_time, dt, rho, c, lmd):
         # Обратный ход
         T_new = np.zeros(Nx + 1)
         T_new[-1] = Tr
+        T_new[0] = Tl
         for i in range(Nx - 1, 0, -1):
             T_new[i] = alpha[i] * T_new[i + 1] + beta[i] 
         
@@ -114,7 +114,7 @@ class HeatApp:
                     # Запускаем расчет 
                     x, T, T_center = calculate_heat(Tl, Tr, L, h, 2.0, dt, rho, c, lmd)
                     
-                    self.tree.insert('', tk.END, values=(dt, h, f"{T_center:.4f}"))
+                    self.tree.insert('', tk.END, values=(dt, h, f"{T_center:.8f}"))
                     
                     # Визуализируем только сетки h >= 0.01, чтобы график не "засорялся"
                     if h >= 0.01:
