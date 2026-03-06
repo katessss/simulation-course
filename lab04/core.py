@@ -11,11 +11,11 @@ class SimpleCustomHash:
 
     @staticmethod 
     def custom_hash(data_bytes):
-        h = 0x6a09e667 
+        h = 0x6a09e667 # стартовый вектор
         
         for byte in data_bytes:
             h ^= byte
-            h = (h + 0x9e3779b9) & 0xFFFFFFFF 
+            h = (h + 0x9e3779b9) & 0xFFFFFFFF  # добавляет нелинейность
             h = SimpleCustomHash._rotate_left(h, 13)
             h ^= (h >> 16)
         
@@ -32,7 +32,7 @@ class CSPRNG_Manual:
     def next_val(self):
         self.counter += 1
         # Конкатенируем ключ и счетчик, хешируем
-        counter_bytes = self.counter.to_bytes(8, 'big') #
+        counter_bytes = self.counter.to_bytes(8, 'big') 
         key_bytes = self.key.to_bytes(4, 'big') 
         data = key_bytes + counter_bytes # Склеиваем байты и хешируем
         bits = SimpleCustomHash.custom_hash(data)

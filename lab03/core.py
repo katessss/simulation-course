@@ -85,10 +85,12 @@ class WildfireEngine:
             self.age[y][x] = 0
 
     def _get_neighbors(self, x, y):
+        neighbors = []
         for dy in (-1, 0, 1):
             for dx in (-1, 0, 1):
                 if dx == 0 and dy == 0: continue
-                return self.grid[(y + dy) % self.h][(x + dx) % self.w] 
+                neighbors.append(self.grid[(y + dy) % self.h][(x + dx) % self.w])
+        return neighbors
 
     def step(self, p_growth, p_lightning, humidity):
         # Один шаг симуляции
@@ -134,20 +136,23 @@ class WildfireEngine:
                     else:
                         neighbors = self._get_neighbors(x, y)
                         if STATE_BURNING in neighbors:
-                            burm_chance = 0.60
-                            if self.age[y][x] < 20: burm_chance -= 0.20
-                            elif self.age[y][x] > 60: burm_chance += 0.20
+                            burn_chance = 0.60
+                            if self.age[y][x] < 20: 
+                                burn_chance -= 0.20
+                            elif self.age[y][x] > 60: 
+                                burn_chance += 0.20
                             
                             # Влажность дает 80% защиты от распространения огня
-                            burm_chance -= humidity * 0.80
-                            if self.rain_active: burm_chance -= 0.50
+                            burn_chance -= humidity * 0.80
+                            if self.rain_active: 
+                                burn_chance -= 0.50
                             if STATE_WATER in neighbors: 
-                                burm_chance -= 0.15
+                                burn_chance -= 0.15
                             
-                            if random.random() < max(burm_chance, 0.0):
+                            if random.random() < max(burn_chance, 0.0):
                                 burn = True
                                 
-                    if (burn and self.rain_active and random.random() < 0.80) or 0.90:
+                    if (burn and self.rain_active and random.random() < 0.80):
                         burn = False
                     self.next_grid[y][x] = STATE_BURNING if burn else STATE_TREE
 
