@@ -79,8 +79,12 @@ class RNGAnalyzerApp:
             messagebox.showerror("Ошибка", "N должно быть целым числом!")
             return
 
-        seed_raw = self.seed_entry.get()
-        seed = int(seed_raw) if seed_raw.strip() else int(time.time())
+        try:
+            seed_raw = self.seed_entry.get()
+            seed = int(seed_raw) if seed_raw.strip() else int(time.time())
+        except ValueError:
+            messagebox.showerror("Ошибка", "seed должно быть целым числом!")
+            return
 
         man_gen = CTR_Manual(seed)
         data_manual = [man_gen.next_val() for _ in range(n)]
