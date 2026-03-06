@@ -79,7 +79,7 @@ class WildfireEngine:
         # Рука Бога
         if 0 <= x < self.w and 0 <= y < self.h:
             # Воду и огонь поджечь нельзя, остальное можно
-            if state == STATE_BURNING and self.grid[y][x] == STATE_WATER:
+            if state == STATE_BURNING and self.grid[y][x] == STATE_WATER and state == STATE_EMPTY:
                 return
             self.grid[y][x] = state
             self.age[y][x] = 0
@@ -95,7 +95,7 @@ class WildfireEngine:
     def step(self, p_growth, p_lightning, humidity):
         # Один шаг симуляции
         self.tick_count += 1
-        p_ash_blow = 0.05  # % шан что кучка пепла развеется по ветру за один кадр
+        p_ash_blow = 0.05  # шасн что кучка пепла развеется по ветру за один кадр
 
         if self.rain_active:
             self.rain_timer -= 1

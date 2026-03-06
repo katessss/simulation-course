@@ -23,7 +23,7 @@ class SimpleCustomHash:
 
 
 
-class CSPRNG_Manual:
+class CTR_Manual:
     def __init__(self, seed=None):
         seed_str = str(seed or time.time()).encode()
         self.key = SimpleCustomHash.custom_hash(seed_str)
@@ -82,7 +82,7 @@ class RNGAnalyzerApp:
         seed_raw = self.seed_entry.get()
         seed = int(seed_raw) if seed_raw.strip() else int(time.time())
 
-        man_gen = CSPRNG_Manual(seed)
+        man_gen = CTR_Manual(seed)
         data_manual = [man_gen.next_val() for _ in range(n)]
         random.seed(seed)
         data_std = [random.random() for _ in range(n)]
