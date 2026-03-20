@@ -27,12 +27,6 @@ FBTN = ("Segoe UI", 10, "bold")
 
 #  АЛГОРИТМ МОИСЕЕВА
 def moiseyev_generate(answers: list[tuple[str, float]]) -> str:
-    """
-    answers: [(name, p_k), ...]  — сумма p_k = 1
-    A := ξ ~ U[0,1)
-    для каждого k:  A := A − p_k
-                    если A ≤ 0 → вернуть A_k
-    """
     A = random.random()
     for name, p_k in answers:
         A -= p_k
