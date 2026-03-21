@@ -176,7 +176,7 @@ class App:
                   self._run_custom, accent=True).pack(side="right")
  
         # начальные строки
-        for n, p in [("Победа", "0.40"), ("Ничья", "0.35"), ("Поражение", "0.25")]:
+        for n, p in [("Победа", "0.5"), ("Поражение", "0.5")]:
             self._add_row(n, p)
  
       
@@ -244,9 +244,9 @@ class App:
         answers = []
         for ne, pe, _ in self.event_rows:
             name = ne.get().strip()
-            if not name:
-                messagebox.showerror("Ошибка", "Название события не может быть пустым")
-                return
+            # if not name:
+            #     messagebox.showerror("Ошибка", "Название события не может быть пустым")
+            #     return
             try:
                 p = float(pe.get())
             except ValueError:
