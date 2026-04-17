@@ -39,7 +39,6 @@ class WeatherMarkovEngine:
         self.states = {1: 'Ясно', 2: 'Облачно', 3: 'Пасмурно'}
         self.current_state = 1
         self.history = []
-        self.step_count = 0
         
         self._validate_matrix()
     
@@ -65,8 +64,7 @@ class WeatherMarkovEngine:
 
         self.current_state = initial_state
         self.history = [initial_state]
-        self.step_count = 0
-    
+   
     def get_transition_probability(self, from_state, to_state):
         return self.transition_matrix[from_state - 1, to_state - 1]
     
@@ -84,7 +82,6 @@ class WeatherMarkovEngine:
                 
         self.current_state = next_state
         self.history.append(next_state)
-        self.step_count += 1
         
         return next_state
     
