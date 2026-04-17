@@ -71,17 +71,6 @@ class WeatherMarkovEngine:
         return self.transition_matrix[from_state - 1, to_state - 1]
     
     
-    def get_stationary_distribution(self):
-        # Решаем систему πP = π
-        eigenvalues, eigenvectors = np.linalg.eig(self.transition_matrix.T) # (πP)^T = P^T * π^T 
-        
-        # Находим собственный вектор для собственного значения 1
-        idx = np.argmin(np.abs(eigenvalues - 1)) #находим индекс собственного числа, которое равно 1 (или очень близко к нему)
-        stationary = np.real(eigenvectors[:, idx])  # берем соответствующий собственный вектор (отбрасываем мнимую часть, если есть)
-        stationary = stationary / stationary.sum() # норм
-        
-        return stationary
-    
     # Делаем взвешенный случайный выбор
     def step(self):
 
@@ -99,14 +88,19 @@ class WeatherMarkovEngine:
         
         return next_state
     
+    def get_stationary_distribution(self):
+        # Решаем систему πP = π
+        eigenvalues, eigenvectors = np.linalg.eig(self.transition_matrix.T) # (πP)^T = P^T * π^T 
+        
+        # Находим собственный вектор для собственного значения 1
+        idx = np.argmin(np.abs(eigenvalues - 1)) #находим индекс собственного числа, которое равно 1 (или очень близко к нему)
+        stationary = np.real(eigenvectors[:, idx])  # берем соответствующий собственный вектор (отбрасываем мнимую часть, если есть)
+        stationary = stationary / stationary.sum() # норм
+        
+        return stationary
+    
     
     def get_empirical_distribution(self):
-        """
-        Получить эмпирическое распределение из истории
-        
-        Returns:
-            numpy array с частотами состояний [1, 2, 3]
-        """
         if not self.history:
             return np.array([0.0, 0.0, 0.0])
         
@@ -120,12 +114,6 @@ class WeatherMarkovEngine:
         ])
     
     def get_statistics(self):
-        """
-        Получить статистику симуляции
-        
-        Returns:
-            словарь со статистикой
-        """
         if not self.history:
             return None
         
