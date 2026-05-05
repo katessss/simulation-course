@@ -15,27 +15,19 @@ import random
 from datetime import datetime
 
 
-def moiseyev_generate(answers):
-    A = random.random()
-    for name, p_k in answers.items():
-        A -= p_k
-        if A <= 0:
-            return name
-    return answers[-1][0]
-
 class WeatherMarkovEngine:
 
     def __init__(self, transition_matrix=None):
 
         if transition_matrix is None:
             # Матрица по умолчанию
-            transition_matrix = [
-                [0.7, 0.2, 0.1],
-                [0.3, 0.4, 0.3],
-                [0.2, 0.3, 0.5]
-            ]
+            Q = [
+            [-0.5,  0.3,  0.2],  # Из Ясно уходим со скоростью 0.5
+            [ 0.4, -0.7,  0.3],  # Из Облачно уходим со скоростью 0.7
+            [ 0.1,  0.4, -0.5]   # Из Пасмурно уходим со скоростью 0.5
+        ]
         
-        self.transition_matrix = np.array(transition_matrix, dtype=float)
+        self.transition_matrix = np.array(Q, dtype=float)
         self.states = {1: 'Ясно', 2: 'Облачно', 3: 'Пасмурно'}
         self.current_state = 1
         self.history = []
@@ -49,21 +41,16 @@ class WeatherMarkovEngine:
         
         # Проверка стохастичности (сумма строк = 1)
         row_sums = self.transition_matrix.sum(axis=1)
-        if not np.allclose(row_sums, 1.0):
-            raise ValueError("Сумма вероятностей в каждой строке должна быть равна 1")
+        if not np.allclose(row_sums, 0.0):
+            raise ValueError("Сумма вероятностей в каждой строке должна быть равна 0")
         
-        # Проверка неотрицательности
-        if np.any(self.transition_matrix < 0):
-            raise ValueError("Все вероятности должны быть неотрицательными")
-    
     def set_transition_matrix(self, matrix):
         self.transition_matrix = np.array(matrix, dtype=float)
         self._validate_matrix()
 
     def reset(self, initial_state=1):
-
         self.current_state = initial_state
-        self.history = [initial_state]
+        self.history = []
    
     def get_transition_probability(self, from_state, to_state):
         return self.transition_matrix[from_state - 1, to_state - 1]
@@ -71,129 +58,92 @@ class WeatherMarkovEngine:
     
     # Делаем взвешенный случайный выбор
     def step(self):
-
-        # Выбираем следующее состояние на основе текущего
-        probabilities = self.transition_matrix[self.current_state - 1]
-
-        answers = {i: p for i, p in enumerate(probabilities)}
-        next_state = moiseyev_generate(answers) + 1
-
-        # next_state = np.random.choice([1, 2, 3], p=probabilities)
-                
-        self.current_state = next_state
-        self.history.append(next_state)
+        # Текущая интенсивность ухода (д    иагональный элемент с минусом)
+        lambda_total = abs(self.transition_matrix[self.current_state - 1, self.current_state - 1])
         
-        return next_state
+        # duration = -ln(U) / lambda
+        duration = random.expovariate(lambda_total) # генерация времени пребывания
+        
+        # Определяем, КУДА переходим
+        # Вероятности переходов пропорциональны интенсивностям
+        rates = self.transition_matrix[self.current_state - 1].copy()
+        rates[self.current_state - 1] = 0  # Обнуляем диагональ
+        probabilities = rates / lambda_total
+        
+        # Сохраняем длительность для истории
+        self.history.append((self.current_state, duration))
+        
+        # Совершаем переход
+        next_state = np.random.choice([1, 2, 3], p=probabilities)
+        self.current_state = next_state
+        
+        return next_state, duration
     
     def get_stationary_distribution(self):
-        # Решаем систему πP = π
-        eigenvalues, eigenvectors = np.linalg.eig(self.transition_matrix.T) # (πP)^T = P^T * π^T 
-        
-        # Находим собственный вектор для собственного значения 1
-        idx = np.argmin(np.abs(eigenvalues - 1)) #находим индекс собственного числа, которое равно 1 (или очень близко к нему)
+        Q = self.transition_matrix
+        # Решаем систему уравнений π * Q = 0
+        # Находим собственный вектор для собственного значения 0
+        eigenvalues, eigenvectors = np.linalg.eig(Q.T) # (πQ)^T = Q^T * π^T 
+        idx = np.argmin(np.abs(eigenvalues)) #находим индекс собственного числа, которое равно 0 (или очень близко к нему)
         stationary = np.real(eigenvectors[:, idx])  # берем соответствующий собственный вектор (отбрасываем мнимую часть, если есть)
-        stationary = stationary / stationary.sum() # норм
-        
-        return stationary
+        return stationary / stationary.sum()
     
     
     def get_empirical_distribution(self):
-        if not self.history:
-            return np.array([0.0, 0.0, 0.0])
+        total_time = sum(dur for state, dur in self.history)
+        times = {1: 0, 2: 0, 3: 0}
+        for state, dur in self.history:
+            times[state] += dur
+        return np.array([times[1]/total_time, times[2]/total_time, times[3]/total_time])
         
-        counter = Counter(self.history)
-        total = len(self.history)
-        
-        return np.array([
-            counter.get(1, 0) / total,
-            counter.get(2, 0) / total,
-            counter.get(3, 0) / total
-        ])
     
     def get_statistics(self):
         if not self.history:
             return None
         
-        counter = Counter(self.history)
-        total_days = len(self.history)
+        times = {1: 0.0, 2: 0.0, 3: 0.0}
+        total_time = 0.0
+        for state, dur in self.history:
+            times[state] += dur
+            total_time += dur
+        
         empirical = self.get_empirical_distribution()
         stationary = self.get_stationary_distribution()
         
-        stats = {
-            'total_days': total_days,
-            'sunny_days': counter.get(1, 0),
-            'cloudy_days': counter.get(2, 0),
-            'overcast_days': counter.get(3, 0),
+        return {
+            'total_time': total_time,
+            'total_events': len(self.history), # Добавили количество переходов
+            'fractions': empirical,            # Добавили массив долей
+            'stationary': stationary,          # Добавили массив теории
+            # Остальные поля можно оставить для совместимости
             'sunny_fraction': empirical[0],
             'cloudy_fraction': empirical[1],
             'overcast_fraction': empirical[2],
             'stationary_sunny': stationary[0],
             'stationary_cloudy': stationary[1],
-            'stationary_overcast': stationary[2],
-            'error_sunny': abs(empirical[0] - stationary[0]),
-            'error_cloudy': abs(empirical[1] - stationary[1]),
-            'error_overcast': abs(empirical[2] - stationary[2])
+            'stationary_overcast': stationary[2]
         }
-        
-        return stats
     
     def save_results(self, filename, n_days=None):
-        """
-        Сохранить результаты в CSV файлы
-        
-        Args:
-            filename: базовое имя файла
-            n_days: сохранить только последние n_days (None = все)
-        """
-        # Определяем диапазон для сохранения
-        if n_days is None or n_days >= len(self.history):
-            save_history = self.history
-            start_day = 1
-        else:
-            save_history = self.history[-n_days:]
-            start_day = len(self.history) - n_days + 1
-        
-        # 1. История симуляции
-        dates = [datetime.now() + timedelta(days=i) for i in range(len(save_history))]
-        
-        df = pd.DataFrame({
-            'День': range(start_day, start_day + len(save_history)),
-            'Дата': dates,
-            'Состояние_код': save_history,
-            'Состояние_название': [self.states[s] for s in save_history]
-        })
+        # Создаем таблицу из истории кортежей
+        df = pd.DataFrame(self.history, columns=['Состояние_код', 'Длительность'])
+        df['Состояние_название'] = df['Состояние_код'].map(self.states)
         
         df.to_csv(filename, index=False, encoding='utf-8-sig')
         
-        # 2. Статистика
+        # Статистика
         stats_filename = filename.replace('.csv', '_statistics.csv')
+        stats = self.get_statistics()
         
-        counter = Counter(save_history)
-        empirical_dist = pd.DataFrame({
+        stat_df = pd.DataFrame({
             'Состояние': ['Ясно', 'Облачно', 'Пасмурно'],
-            'Код': [1, 2, 3],
-            'Количество_дней': [counter.get(i, 0) for i in [1, 2, 3]],
-            'Эмпирическая_вероятность': [counter.get(i, 0) / len(save_history) for i in [1, 2, 3]]
+            'Доля_времени': stats['fractions'],
+            'Теоретическая_доля': stats['stationary']
         })
+        stat_df.to_csv(stats_filename, index=False, encoding='utf-8-sig')
         
-        stationary = self.get_stationary_distribution()
-        empirical_dist['Теоретическая_вероятность'] = stationary
-        empirical_dist['Разница'] = abs(empirical_dist['Эмпирическая_вероятность'] - 
-                                        empirical_dist['Теоретическая_вероятность'])
-        
-        empirical_dist.to_csv(stats_filename, index=False, encoding='utf-8-sig')
-        
-        # 3. Матрица переходов
-        matrix_filename = filename.replace('.csv', '_transition_matrix.csv')
-        transition_df = pd.DataFrame(
-            self.transition_matrix,
-            columns=['Ясно', 'Облачно', 'Пасмурно'],
-            index=['Ясно', 'Облачно', 'Пасмурно']
-        )
-        transition_df.to_csv(matrix_filename, encoding='utf-8-sig')
-        
-        return filename, stats_filename, matrix_filename
-    
+        return filename, stats_filename, ""
+
     def get_history_slice(self, start=None, end=None):
         """
         Получить срез истории
@@ -207,23 +157,22 @@ class WeatherMarkovEngine:
         """
         return self.history[start:end]
     
+
     def get_cumulative_distribution(self):
-        """
-        Получить кумулятивное распределение по дням
-        
-        Returns:
-            numpy array размера (len(history), 3) с вероятностями по дням
-        """
         if not self.history:
             return np.array([])
         
         cumulative = []
-        for i in range(1, len(self.history) + 1):
-            counter = Counter(self.history[:i])
+        running_times = {1: 0.0, 2: 0.0, 3: 0.0}
+        current_total_time = 0.0
+        
+        for state, dur in self.history:
+            running_times[state] += dur
+            current_total_time += dur
             cumulative.append([
-                counter.get(1, 0) / i,
-                counter.get(2, 0) / i,
-                counter.get(3, 0) / i
+                running_times[1] / current_total_time,
+                running_times[2] / current_total_time,
+                running_times[3] / current_total_time
             ])
         
         return np.array(cumulative)
@@ -388,7 +337,7 @@ class WeatherMarkovGUI:
         ttk.Label(days_frame, text="(all = все)").grid(row=0, column=2, padx=5)
         
         save_btn = ttk.Button(left_frame, text="💾 Сохранить в CSV", 
-                             command=self._save_results, width=20)
+                             command=self.save_results, width=20)
         save_btn.grid(row=20, column=0, columnspan=4, pady=10)
         
         # --- Статистика ---
@@ -436,8 +385,8 @@ class WeatherMarkovGUI:
         self.figure.tight_layout(rect=[0, 0.03, 1, 0.96])
     
     def _update_plots(self):
-        """Обновление всех графиков"""
-        # Очистка
+        """Обновление всех графиков для непрерывного времени"""
+        # Очистка всех осей
         self.ax1.clear()
         self.ax2.clear()
         self.ax3.clear()
@@ -449,91 +398,100 @@ class WeatherMarkovGUI:
             self.canvas.draw()
             return
         
-        # 1. Временной ряд (показываем последние 100 точек)
-        display_history = history[-100:] if len(history) > 100 else history
-        start_idx = len(history) - len(display_history)
-        days = list(range(start_idx + 1, start_idx + len(display_history) + 1))
-        colors = [self.colors[state] for state in display_history]
+        # 1. Временной ряд (НЕПРЕРЫВНЫЙ)
+        # Берем последние 50 переходов, чтобы график был читаемым
+        display_history = history[-50:] if len(history) > 50 else history
         
-        self.ax1.bar(days, display_history, color=colors, edgecolor='black', linewidth=0.5)
-        self.ax1.set_xlabel('День', fontsize=9)
+        # Рассчитываем временную шкалу (ось X — это суммарное время)
+        states = [h[0] for h in display_history]
+        durations = [h[1] for h in display_history]
+        
+        # Точки времени: [0, d1, d1+d2, d1+d2+d3...]
+        time_points = [0]
+        for d in durations:
+            time_points.append(time_points[-1] + d)
+            
+        # Рисуем ступенчатый график (состояние меняется в моменты времени)
+        # where='post' означает, что состояние держится ДО следующей точки
+        self.ax1.step(time_points[:-1], states, where='post', color='black', linewidth=1, zorder=3)
+        
+        # Раскрашиваем фон графика в цвета состояний
+        for i in range(len(time_points)-1):
+            self.ax1.axvspan(time_points[i], time_points[i+1], 
+                             color=self.colors[states[i]], alpha=0.4)
+        
+        self.ax1.set_xlabel('Суммарное время', fontsize=9)
         self.ax1.set_ylabel('Состояние', fontsize=9)
-        self.ax1.set_title(f'Временной ряд (последние {len(display_history)} дней)', fontsize=10)
+        self.ax1.set_title(f'Непрерывный поток состояний (посл. {len(display_history)} событий)', fontsize=10)
         self.ax1.set_yticks([1, 2, 3])
         self.ax1.set_yticklabels(['Ясно', 'Облачно', 'Пасмурно'], fontsize=8)
-        self.ax1.grid(axis='y', alpha=0.3)
-        
-        # 2. Сравнение распределений
+        self.ax1.grid(axis='y', alpha=0.2)
+
+        # 2. Сравнение распределений (ВРЕМЯ-ВЗВЕШЕННОЕ)
+        # Здесь мы сравниваем долю ВРЕМЕНИ, проведенного в состоянии
         empirical = self.engine.get_empirical_distribution()
         stationary = self.engine.get_stationary_distribution()
         
         x = np.arange(3)
         width = 0.35
         
-        bars1 = self.ax2.bar(x - width/2, empirical, width, 
-                            label='Эмпирическое', color='skyblue', 
-                            edgecolor='black', linewidth=1.5)
-        bars2 = self.ax2.bar(x + width/2, stationary, width, 
-                            label='Теоретическое', color='lightcoral', 
-                            edgecolor='black', linewidth=1.5)
+        self.ax2.bar(x - width/2, empirical, width, 
+                    label='Эмпирич. (время)', color='skyblue', edgecolor='black')
+        self.ax2.bar(x + width/2, stationary, width, 
+                    label='Теоретич. (Q-стац)', color='lightcoral', edgecolor='black')
         
         self.ax2.set_xlabel('Состояние', fontsize=9)
-        self.ax2.set_ylabel('Вероятность', fontsize=9)
-        self.ax2.set_title('Сравнение распределений', fontsize=10)
+        self.ax2.set_ylabel('Доля времени', fontsize=9)
+        self.ax2.set_title('Распределение времени в состояниях', fontsize=10)
         self.ax2.set_xticks(x)
         self.ax2.set_xticklabels(['Ясно', 'Облачно', 'Пасмурно'], fontsize=8)
-        self.ax2.legend(fontsize=8)
-        self.ax2.grid(axis='y', alpha=0.3)
+        self.ax2.legend(fontsize=7)
         self.ax2.set_ylim(0, 1)
         
-        # Добавление значений
-        for bars in [bars1, bars2]:
-            for bar in bars:
-                height = bar.get_height()
-                self.ax2.text(bar.get_x() + bar.get_width()/2., height,
-                            f'{height:.3f}', ha='center', va='bottom', fontsize=7)
-        
-        # 3. Матрица переходов (heatmap)
-        im = self.ax3.imshow(self.engine.transition_matrix, cmap='YlOrRd', 
-                            aspect='auto', vmin=0, vmax=1)
+        # Добавляем текстовые значения над столбцами
+        for i, val in enumerate(empirical):
+            self.ax2.text(i - width/2, val + 0.02, f'{val:.2f}', ha='center', fontsize=7)
+        for i, val in enumerate(stationary):
+            self.ax2.text(i + width/2, val + 0.02, f'{val:.2f}', ha='center', fontsize=7)
+
+        # 3. Матрица интенсивностей Q (Heatmap)
+        # Используем палитру 'coolwarm', так как диагональ отрицательная (холодная), 
+        # а переходы положительные (теплые)
+        im = self.ax3.imshow(self.engine.transition_matrix, cmap='coolwarm', 
+                            aspect='auto')
         self.ax3.set_xticks([0, 1, 2])
         self.ax3.set_yticks([0, 1, 2])
         self.ax3.set_xticklabels(['Ясно', 'Облачно', 'Пасмурно'], fontsize=8)
         self.ax3.set_yticklabels(['Ясно', 'Облачно', 'Пасмурно'], fontsize=8)
-        self.ax3.set_xlabel('Следующее состояние', fontsize=9)
-        self.ax3.set_ylabel('Текущее состояние', fontsize=9)
-        self.ax3.set_title('Матрица переходов', fontsize=10)
+        self.ax3.set_title('Матрица интенсивностей (Q)', fontsize=10)
         
-        # Добавление значений в ячейки
+        # Добавление значений интенсивностей в ячейки
         for i in range(3):
             for j in range(3):
-                self.ax3.text(j, i, f'{self.engine.transition_matrix[i, j]:.2f}',
-                            ha="center", va="center", color="black", 
+                val = self.engine.transition_matrix[i, j]
+                self.ax3.text(j, i, f'{val:.2f}',
+                            ha="center", va="center", 
+                            color="white" if abs(val) > 0.4 else "black", 
                             fontsize=9, fontweight='bold')
-        
-        # 4. Кумулятивное распределение
+
+        # 4. Сходимость по времени (Кумулятивное распределение)
         if len(history) > 1:
             cumulative = self.engine.get_cumulative_distribution()
-            days_range = range(1, len(history) + 1)
+            # Ось X — это номер перехода (события)
+            x_range = range(1, len(history) + 1)
             
-            self.ax4.plot(days_range, cumulative[:, 0], 
-                        label='Ясно', color=self.colors[1], linewidth=2)
-            self.ax4.plot(days_range, cumulative[:, 1], 
-                        label='Облачно', color=self.colors[2], linewidth=2)
-            self.ax4.plot(days_range, cumulative[:, 2], 
-                        label='Пасмурно', color=self.colors[3], linewidth=2)
+            self.ax4.plot(x_range, cumulative[:, 0], label='Ясно', color=self.colors[1])
+            self.ax4.plot(x_range, cumulative[:, 1], label='Облачно', color=self.colors[2])
+            self.ax4.plot(x_range, cumulative[:, 2], label='Пасмурно', color=self.colors[3])
             
-            # Теоретические линии
-            self.ax4.axhline(y=stationary[0], color=self.colors[1], 
-                           linestyle='--', alpha=0.5)
-            self.ax4.axhline(y=stationary[1], color=self.colors[2], 
-                           linestyle='--', alpha=0.5)
-            self.ax4.axhline(y=stationary[2], color=self.colors[3], 
-                           linestyle='--', alpha=0.5)
+            # Теоретические линии (стационар)
+            self.ax4.axhline(y=stationary[0], color=self.colors[1], linestyle='--', alpha=0.5)
+            self.ax4.axhline(y=stationary[1], color=self.colors[2], linestyle='--', alpha=0.5)
+            self.ax4.axhline(y=stationary[2], color=self.colors[3], linestyle='--', alpha=0.5)
             
-            self.ax4.set_xlabel('День', fontsize=9)
-            self.ax4.set_ylabel('Кумулятивная вероятность', fontsize=9)
-            self.ax4.set_title('Сходимость к стационарному', fontsize=10)
+            self.ax4.set_xlabel('Количество переходов', fontsize=9)
+            self.ax4.set_ylabel('Доля накопленного времени', fontsize=9)
+            self.ax4.set_title('Сходимость к Q-стационарному', fontsize=10)
             self.ax4.legend(fontsize=7, loc='best')
             self.ax4.grid(True, alpha=0.3)
             self.ax4.set_ylim(0, 1)
@@ -542,45 +500,26 @@ class WeatherMarkovGUI:
         self.canvas.draw()
     
     def _update_display(self):
-        """Обновление отображаемой информации"""
-        # Текущее состояние
         state = self.engine.current_state
-        state_name = self.state_names[state]
-        state_color = self.colors[state]
+        self.current_state_label.config(text=self.state_names[state], foreground=self.colors[state])
         
-        self.current_state_label.config(text=state_name, foreground=state_color)
-        self.step_count_label.config(text=f"День: {len(self.engine.history)}")
-        
-        # Статистика
         stats = self.engine.get_statistics()
         if stats:
-            stationary = self.engine.get_stationary_distribution()
+            # Меняем текст на "Дней"
+            self.step_count_label.config(text=f"Прошло дней: {stats['total_time']:.2f}")
             
-            stats_text = f"""
-Общее количество дней: {stats['total_days']}
-
-Эмпирическое распределение:
-  Ясно:     {stats['sunny_days']:4d} ({stats['sunny_fraction']*100:5.2f}%)
-  Облачно:  {stats['cloudy_days']:4d} ({stats['cloudy_fraction']*100:5.2f}%)
-  Пасмурно: {stats['overcast_days']:4d} ({stats['overcast_fraction']*100:5.2f}%)
-
-Теоретическое распределение:
-  Ясно:     {stationary[0]*100:5.2f}%
-  Облачно:  {stationary[1]*100:5.2f}%
-  Пасмурно: {stationary[2]*100:5.2f}%
-
-Разница (эмпир. - теорет.):
-  Ясно:     {stats['error_sunny']*100:5.2f}%
-  Облачно:  {stats['error_cloudy']*100:5.2f}%
-  Пасмурно: {stats['error_overcast']*100:5.2f}%
-            """
-            
-            self.stats_text.delete(1.0, tk.END)
-            self.stats_text.insert(1.0, stats_text)
+            txt = f"Всего переходов: {stats['total_events']}\n"
+            txt += f"Общая длительность: {stats['total_time']:.2f} дн.\n\n"
+            txt += "Распределение (в днях):\n"
+            for i in range(1, 4):
+                name = self.state_names[i]
+                # Считаем реальное кол-во дней для каждого состояния
+                actual_days = stats['fractions'][i-1] * stats['total_time']
+                txt += f"{name:8}: {actual_days:5.2f} дн. ({stats['fractions'][i-1]*100:4.1f}%)\n"
         
-        # Обновление графиков
         self._update_plots()
-    
+        
+
     def _apply_matrix(self):
         """Применить матрицу переходов из полей ввода"""
         try:
@@ -636,62 +575,65 @@ class WeatherMarkovGUI:
         self.speed_label.config(text=f"{self.animation_speed} мс")
     
     def _animation_loop(self):
-        """Главный цикл анимации"""
         if self.is_running:
-            self.engine.step()
+            next_state, duration = self.engine.step()
             self._update_display()
-        
-        # Планируем следующее обновление
-        self.root.after(self.animation_speed, self._animation_loop)
-    
-    def _save_results(self):
-        """Сохранить результаты"""
-        if len(self.engine.history) == 0:
-            messagebox.showwarning("Предупреждение", 
-                                  "Нет данных для сохранения. Запустите симуляцию.")
+            
+            # Длительность состояния умножаем на ползунок скорости
+            delay = max(10, int(duration * self.animation_speed))
+            self.root.after(delay, self._animation_loop)
+        else:
+            self.root.after(100, self._animation_loop)
+
+            
+    def save_results(self):
+        """Сохранить результаты (исправленная версия)"""
+        if not self.engine.history: # Добавили .engine
+            messagebox.showwarning("Предупреждение", "Нет данных для сохранения.")
             return
         
-        # Получаем количество дней для сохранения
-        days_str = self.save_days_var.get().strip().lower()
-        
-        if days_str == 'all' or days_str == '':
-            n_days = None
-            days_text = "все"
-        else:
-            try:
-                n_days = int(days_str)
-                if n_days <= 0:
-                    messagebox.showerror("Ошибка", "Количество дней должно быть положительным")
-                    return
-                days_text = f"{n_days}"
-            except ValueError:
-                messagebox.showerror("Ошибка", "Некорректное количество дней")
-                return
-        
-        # Выбор файла для сохранения
         filename = filedialog.asksaveasfilename(
             defaultextension=".csv",
-            filetypes=[("CSV файлы", "*.csv"), ("Все файлы", "*.*")],
-            initialfile="weather_simulation_results.csv"
+            filetypes=[("CSV файлы", "*.csv")],
+            initialfile="weather_results.csv"
         )
         
         if not filename:
             return
         
         try:
-            # Сохранение
-            files = self.engine.save_results(filename, n_days=n_days)
+            # 1. Создаем таблицу из истории, которая лежит в ENGINE
+            df = pd.DataFrame(self.engine.history, columns=['Состояние_код', 'Длительность'])
             
-            message = f"Сохранено {days_text} дней:\n\n"
-            message += f"✓ {files[0]}\n"
-            message += f"✓ {files[1]}\n"
-            message += f"✓ {files[2]}"
+            # 2. Мапим названия состояний (они тоже в ENGINE)
+            df['Состояние_название'] = df['Состояние_код'].map(self.engine.states)
             
-            messagebox.showinfo("Успех", message)
+            # 3. Рассчитываем даты (если нужно, чтобы время было непрерывным)
+            start_date = datetime.now()
+            cumulative_days = 0.0
+            dates = []
+            for dur in df['Длительность']:
+                dates.append((start_date + timedelta(days=cumulative_days)).strftime("%Y-%m-%d %H:%M:%S"))
+                cumulative_days += dur
+            df.insert(0, 'Дата_и_время', dates)
+            
+            # Сохраняем основной файл
+            df.to_csv(filename, index=False, encoding='utf-8-sig')
+            
+            # 4. Сохраняем статистику
+            stats = self.engine.get_statistics()
+            stats_filename = filename.replace('.csv', '_statistics.csv')
+            stat_df = pd.DataFrame({
+                'Состояние': ['Ясно', 'Облачно', 'Пасмурно'],
+                'Доля_времени': stats['fractions'],
+                'Теоретическая_доля': stats['stationary']
+            })
+            stat_df.to_csv(stats_filename, index=False, encoding='utf-8-sig')
+            
+            messagebox.showinfo("Успех", f"Результаты сохранены:\n{filename}\n{stats_filename}")
             
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка сохранения:\n{e}")
-
+            messagebox.showerror("Ошибка", f"Ошибка при сохранении: {e}")
 
 def main():
     root = tk.Tk()
