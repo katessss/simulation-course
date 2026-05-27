@@ -41,7 +41,7 @@ class PoissonFlowModel:
             self.event_counts.append(count)
         
         # Сохраняем последний сгенерированный поток для визуализации
-        self.event_times = self.generate_flow()
+        self.event_times = times
         
         return self.event_counts
     

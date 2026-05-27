@@ -1,151 +1,150 @@
 import numpy as np
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-class MM1Simulation:
+class MM1LossSimulation:
     def __init__(self, lambd, mu, max_time):
-        self.lambd = lambd  # Интенсивность входящего потока
-        self.mu = mu        # Интенсивность обслуживания
+        self.lambd = lambd 
+        self.mu = mu 
         self.max_time = max_time
         
         # Состояние системы
-        self.t = 0          # Текущее модельное время
-        self.x = 0          # Клиентов на обслуживании (0 или 1 для M/M/1)
-        self.y = 0          # Клиентов в очереди
+        self.t = 0  
+        self.x = 0 # 0 - свободно, 1 - занято. Очереди (y) нет.
         
         # Статистика
-        self.wait_times = []      # Время пребывания каждого клиента в очереди
-        self.system_states = []   # (время, кол-во клиентов в системе)
-        self.arrival_times = []   # Временные метки прибытия клиентов в очередь
+        self.system_states = [] 
+        self.total_customers = 0
+        self.lost_customers = 0
 
     def run(self):
-        # Начальная генерация событий (Слайд 10, шаг 2)
-        tau = np.random.exponential(1/self.lambd) # Время до появления клиента
-        delta = float('inf')                      # Время до окончания обслуживания
+        tau = np.random.exponential(1/self.lambd) 
+        delta = float('inf') 
         
         while self.t < self.max_time:
-            # Сохраняем текущее состояние системы для статистики
-            self.system_states.append((self.t, self.x + self.y))
+            # Сохраняем состояние (только x, так как y = 0)
+            self.system_states.append((self.t, self.x))
             
-            # Слайд 10, шаг 4: выбор ближайшего события
             if tau < delta:
                 # СОБЫТИЕ: Появление клиента
                 self.t += tau
-                delta -= tau # Уменьшаем оставшееся время обслуживания
+                self.total_customers += 1
                 
-                if self.x < 1: # Если оператор свободен (N=1 для ПВЗ)
+                if self.x == 0:
                     self.x = 1
-                    self.wait_times.append(0) # Клиент сразу идет на обслуживание
                     delta = np.random.exponential(1/self.mu)
                 else:
-                    self.y += 1 # В очередь
-                    self.arrival_times.append(self.t)
+                    # ОЧЕРЕДИ НЕТ: Клиент уходит (отказ)
+                    self.lost_customers += 1
                 
                 tau = np.random.exponential(1/self.lambd)
             else:
-                # СОБЫТИЕ: Окончание обслуживания
+                # СОБЫТИЕ: (обслуживание завершается раньше, чем приходит новый клиент)
                 self.t += delta
-                tau -= delta # Уменьшаем время до нового прибытия
+                tau -= delta
                 
-                if self.y == 0:
-                    self.x = 0
-                    delta = float('inf')
-                else:
-                    self.y -= 1
-                    # Клиент из очереди идет на обслуживание
-                    arrival = self.arrival_times.pop(0)
-                    self.wait_times.append(self.t - arrival)
-                    delta = np.random.exponential(1/self.mu)
+                self.x = 0 
+                delta = float('inf')
 
-        return self.wait_times, self.system_states
+        return self.system_states, self.total_customers, self.lost_customers
 
     def get_distribution_data(self):
-        # Расчет среднего времени пребывания системы в каждом состоянии (N клиентов)
-        total_times = {}
-        for i in range(len(self.system_states) - 1):
+        total_times = {0: 0, 1: 0} 
+        for i in range(len(self.system_states) - 1): # Цикл проходит по всем сохраненным состояниям
             start_t, count = self.system_states[i]
             end_t, _ = self.system_states[i+1]
             duration = end_t - start_t
             total_times[count] = total_times.get(count, 0) + duration
             
-        # Вероятности нахождения n клиентов в системе
         counts = sorted(total_times.keys())
-        probs = [total_times[c] / self.t for c in counts]
+        probs = [total_times[c] / self.t for c in counts] # расчет относительных частот (эмпирических вероятностей)
         return counts, probs
-
-
 
 
 class SimulationGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Моделирование ПВЗ (M/M/1)")
-        
-        # Панель управления
-        control_frame = tk.Frame(root)
-        control_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
-        
-        tk.Label(control_frame, text="λ (прибытие):").grid(row=0, column=0)
-        self.entry_lambda = tk.Entry(control_frame)
-        self.entry_lambda.insert(0, "2.0")
-        self.entry_lambda.grid(row=0, column=1)
-        
-        tk.Label(control_frame, text="μ (обслуживание):").grid(row=0, column=2)
-        self.entry_mu = tk.Entry(control_frame)
-        self.entry_mu.insert(0, "2.5")
-        self.entry_mu.grid(row=0, column=3)
-        
-        tk.Label(control_frame, text="Время модел.:").grid(row=0, column=4)
-        self.entry_time = tk.Entry(control_frame)
-        self.entry_time.insert(0, "1000")
-        self.entry_time.grid(row=0, column=5)
-        
-        btn_run = tk.Button(control_frame, text="Запустить", command=self.run_simulation)
-        btn_run.grid(row=0, column=6, padx=10)
+        self.root.title("Модель M/M/1/0 (Система с отказами, без очереди)")
+        self.root.geometry("1100x750")
 
-        # Область для графиков
-        self.fig, (self.ax1, self.ax2) = plt.subplots(1, 2, figsize=(12, 5))
+        control_frame = tk.Frame(root)
+        control_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=10)
+
+        params = [("λ (вход):", "2.0"), ("μ (обслуж.):", "2.5"), ("Время:", "1000")]
+        self.entries = {}
+        for i, (label, default) in enumerate(params):
+            tk.Label(control_frame, text=label).grid(row=0, column=i*2, padx=5)
+            entry = tk.Entry(control_frame, width=8)
+            entry.insert(0, default)
+            entry.grid(row=0, column=i*2+1, padx=5)
+            self.entries[label] = entry
+
+        btn_run = tk.Button(control_frame, text="РАССЧИТАТЬ", command=self.run_simulation, 
+                            bg="#4CAF50", fg="white", font=("Arial", 10, "bold"))
+        btn_run.grid(row=0, column=6, padx=20)
+
+        table_frame = tk.Frame(root)
+        table_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=5)
+
+        self.tree = ttk.Treeview(table_frame, columns=("param", "theory", "practice"), show='headings', height=5)
+        self.tree.heading("param", text="Параметр")
+        self.tree.heading("theory", text="Теория (Эрланг)")
+        self.tree.heading("practice", text="Практика (Имитация)")
+        self.tree.column("param", width=300, anchor="center")
+        self.tree.pack(fill=tk.X)
+
+        self.fig, (self.ax1, self.ax2) = plt.subplots(1, 2, figsize=(10, 4))
         self.canvas = FigureCanvasTkAgg(self.fig, master=root)
         self.canvas.get_tk_widget().pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True)
 
     def run_simulation(self):
         try:
-            l = float(self.entry_lambda.get())
-            m = float(self.entry_mu.get())
-            t_max = float(self.entry_time.get())
-            
-            sim = MM1Simulation(l, m, t_max)
-            wait_times, states = sim.run()
-            counts, probs = sim.get_distribution_data()
-            
-            # Очистка и отрисовка
-            self.ax1.clear()
-            self.ax2.clear()
-            
-            # 1. Полигон частот (Число клиентов в системе)
-            self.ax1.plot(counts, probs, marker='o', linestyle='-', color='b')
-            self.ax1.set_title("Эмпирическое распределение числа клиентов")
-            self.ax1.set_xlabel("Количество клиентов (n)")
-            self.ax1.set_ylabel("Вероятность P(n)")
-            self.ax1.grid(True)
+            l = float(self.entries["λ (вход):"].get())
+            m = float(self.entries["μ (обслуж.):"].get())
+            t_max = float(self.entries["Время:"].get())
 
-            # 2. Гистограмма (Время ожидания в очереди)
-            self.ax2.hist(wait_times, bins=30, density=True, color='green', alpha=0.7)
-            self.ax2.set_title("Распределение времени в очереди")
-            self.ax2.set_xlabel("Время ожидания (t)")
-            self.ax2.set_ylabel("Плотность")
-            self.ax2.grid(True)
+            sim = MM1LossSimulation(l, m, t_max)
+            states, total, lost = sim.run()
+            counts, probs = sim.get_distribution_data()
+
+            # --- ТЕОРИЯ M/M/1/0 (Формулы Эрланга) ---
+            rho = l / m
+            p0_theory = 1 / (1 + rho)           # Вер-ть простоя
+            p_loss_theory = rho / (1 + rho)     # Вер-ть отказа (она же P1)
+            L_theory = p_loss_theory            # Ср. число клиентов (т.к. макс 1)
+
+            # --- ПРАКТИКА ---
+            p0_prac = probs[0] if 0 in counts else 0
+            p_loss_prac = lost / total if total > 0 else 0
+            L_prac = sum(n * p for n, p in zip(counts, probs))
+
+            for i in self.tree.get_children(): self.tree.delete(i)
             
-            self.fig.tight_layout()
+            res = [
+                ("Интенсивность нагрузки (ρ)", f"{rho:.3f}", f"---"),
+                ("Вероятность простоя (P0)", f"{p0_theory:.3f}", f"{p0_prac:.3f}"),
+                ("Вероятность отказа (P_loss)", f"{p_loss_theory:.3f}", f"{p_loss_prac:.3f}"),
+                ("Среднее число клиентов (L)", f"{L_theory:.3f}", f"{L_prac:.3f}")
+            ]
+            for r in res: self.tree.insert("", "end", values=r)
+
+            self.ax1.clear()
+            self.ax1.bar(counts, probs, color='blue', alpha=0.6, label='Практика')
+            self.ax1.set_xticks([0, 1])
+            self.ax1.set_title("Распределение клиентов (0 или 1)")
+            self.ax1.set_ylabel("Вероятность")
+            self.ax1.grid(axis='y')
+
+            self.ax2.clear()
+            labels = ['Обслужено', 'Упущено (отказ)']
+            sizes = [total - lost, lost]
+            self.ax2.pie(sizes, labels=labels, autopct='%1.1f%%', colors=['#66b3ff','#ff9999'], startangle=90)
+            self.ax2.set_title("Соотношение клиентов")
+
             self.canvas.draw()
-            
-            # Вывод кратких итогов
-            avg_wait = sum(wait_times)/len(wait_times) if wait_times else 0
-            messagebox.showinfo("Результат", f"Среднее время ожидания: {avg_wait:.2f}\n"
-                                             f"Загрузка системы (ρ): {l/m:.2f}")
-            
+
         except Exception as e:
             messagebox.showerror("Ошибка", str(e))
 
